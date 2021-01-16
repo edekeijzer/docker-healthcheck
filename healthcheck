@@ -1,17 +1,50 @@
-#!/usr/bin/with-contenv ash
-HEALTHCHECKS=${1:-/etc/healthcheck.d}
-FAIL_VERBOSE=${2:-0}
-ERRORLEVEL=0
-ls -1 ${HEALTHCHECKS} | while read HEALTHCHECK ; do
-  echo -n "${HEALTHCHECK}: "
-  # Ignore OK output but show error
-  if [ ${FAIL_VERBOSE} -eq 0 ] ; then
-    # ash does not allow <<< string redirection to bc
-    . ${HEALTHCHECKS%/}/${HEALTHCHECK} 1>/dev/null 2>&1 && echo "OK" || (echo "FAIL" ; ERRORLEVEL=$(echo "${ERRORLEVEL} + 1" | bc))
-  else
-    . ${HEALTHCHECKS%/}/${HEALTHCHECK} 1>/dev/null && echo "OK" || ERRORLEVEL=$(echo "${ERRORLEVEL} + 1" | bc)
-  fi
+#!/bin/ash
+# This suddenly did not work anymore
+# #!/usr/bin/with-contenv ash
+
+while getopts "c:d:v" OPT ; do
+  case $OPT in
+    c) CONFIG_FILE=${OPTARG};;
+    d) HEALTHCHECKS=${OPTARG};;
+    v) FAIL_VERBOSE=1;;
+    *)exit $E_OPTERROR;;
+  esac
+  OPRIND=${OPTIND}
 done
+
+if [ -z ${CONFIG_FILE} ] ; then
+  [ -e /etc/healthcheck.conf ] && CONFIG_FILE=/etc/healthcheck.conf
+else
+  if [ -e ${CONFIG_FILE} ] ; then
+    source ${CONFIG_FILE}
+  else
+    echo "ERROR: specified config file ${CONFIG_FILE} not found"
+    exit 1
+  fi
+fi
+
+# Use config values from config file or defaults if not overridden from command line
+[ -z "${HEALTHCHECKS}" ] && HEALTHCHECKS=${directory:-'/etc/healthcheck.d'}
+[ -z "${FAIL_VERBOSE}" ] && FAIL_VERBOSE=${verbose:-'0'}
+
+ERRORLEVEL=0
+if [ ! -d ${HEALTHCHECKS} ] ; then
+  echo "ERROR: healthcheck directory ${HEALTHCHECKS} not found"
+  exit 2
+elif [ $(ls -1 ${HEALTHCHECKS} | wc -l) -eq 0 ] ; then
+  echo "WARNING: healthcheck directory ${HEALTHCHECKS} is empty" || echo $(ls -1 ${HEALTHCHECKS} | wc -l)
+else
+  ls -1 ${HEALTHCHECKS} | while read HEALTHCHECK ; do
+    echo -n "${HEALTHCHECK}: "
+    # Ignore OK output but show error
+    if [ ${FAIL_VERBOSE} -eq 0 ] ; then
+      # ash does not allow <<< string redirection to bc
+      . ${HEALTHCHECKS%/}/${HEALTHCHECK} 1>/dev/null 2>&1 && echo "OK" || (echo "FAIL" ; ERRORLEVEL=$(echo "${ERRORLEVEL} + 1" | bc))
+    else
+      . ${HEALTHCHECKS%/}/${HEALTHCHECK} 1>/dev/null && echo "OK" || ERRORLEVEL=$(echo "${ERRORLEVEL} + 1" | bc)
+    fi
+  done
+fi
 
 # Somehow we are unable to exit with an errorlevel from a variable?
 [ ${ERRORLEVEL} -gt 0 ] && exit 1
