@@ -1,0 +1,17 @@
+#!/usr/bin/with-contenv ash
+HEALTHCHECKS=${1:-/etc/healthcheck.d}
+FAIL_VERBOSE=${2:-0}
+ERRORLEVEL=0
+ls -1 ${HEALTHCHECKS} | while read HEALTHCHECK ; do
+  echo -n "${HEALTHCHECK}: "
+  # Ignore OK output but show error
+  if [ ${FAIL_VERBOSE} -eq 0 ] ; then
+    # ash does not allow <<< string redirection to bc
+    . ${HEALTHCHECKS%/}/${HEALTHCHECK} 1>/dev/null 2>&1 && echo "OK" || (echo "FAIL" ; ERRORLEVEL=$(echo "${ERRORLEVEL} + 1" | bc))
+  else
+    . ${HEALTHCHECKS%/}/${HEALTHCHECK} 1>/dev/null && echo "OK" || ERRORLEVEL=$(echo "${ERRORLEVEL} + 1" | bc)
+  fi
+done
+
+# Somehow we are unable to exit with an errorlevel from a variable?
+[ ${ERRORLEVEL} -gt 0 ] && exit 1
