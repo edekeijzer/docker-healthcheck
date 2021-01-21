@@ -1,12 +1,14 @@
 #!/bin/ash
-# This suddenly did not work anymore
-# #!/usr/bin/with-contenv ash
 
-while getopts "c:d:v" OPT ; do
+# Load S6 environment if it's available
+[ -d  /var/run/s6/container_environment ] && /usr/bin/justc-envdir -- /var/run/s6/container_environment
+
+while getopts "c:d:vh" OPT ; do
   case $OPT in
     c) CONFIG_FILE=${OPTARG};;
     d) HEALTHCHECKS=${OPTARG};;
     v) FAIL_VERBOSE=1;;
+    h) echo "Check GitHub for help!" ; exit;;
     *)exit $E_OPTERROR;;
   esac
   OPRIND=${OPTIND}
@@ -34,17 +36,25 @@ if [ ! -d ${HEALTHCHECKS} ] ; then
 elif [ $(ls -1 ${HEALTHCHECKS} | wc -l) -eq 0 ] ; then
   echo "WARNING: healthcheck directory ${HEALTHCHECKS} is empty" || echo $(ls -1 ${HEALTHCHECKS} | wc -l)
 else
-  ls -1 ${HEALTHCHECKS} | while read HEALTHCHECK ; do
+for HEALTHCHECK in $(ls -1 ${HEALTHCHECKS} | grep -ve 'README') ; do
     echo -n "${HEALTHCHECK}: "
     # Ignore OK output but show error
     if [ ${FAIL_VERBOSE} -eq 0 ] ; then
-      # ash does not allow <<< string redirection to bc
-      . ${HEALTHCHECKS%/}/${HEALTHCHECK} 1>/dev/null 2>&1 && echo "OK" || (echo "FAIL" ; ERRORLEVEL=$(echo "${ERRORLEVEL} + 1" | bc))
+      if source ${HEALTHCHECKS%/}/${HEALTHCHECK} 1>/dev/null 2>&1 ; then
+        echo "OK"
+      else
+        echo "FAIL"
+        # ash does not allow <<< string redirection to bc
+        ERRORLEVEL=$(echo "${ERRORLEVEL} + 1" | bc)
+      fi
     else
-      . ${HEALTHCHECKS%/}/${HEALTHCHECK} 1>/dev/null && echo "OK" || ERRORLEVEL=$(echo "${ERRORLEVEL} + 1" | bc)
+      if source ${HEALTHCHECKS%/}/${HEALTHCHECK} 1>/dev/null ; then
+        echo "OK"
+      else
+        ERRORLEVEL=$(echo "${ERRORLEVEL} + 1" | bc)
+      fi
     fi
   done
 fi
 
-# Somehow we are unable to exit with an errorlevel from a variable?
-[ ${ERRORLEVEL} -gt 0 ] && exit 1
+exit ${ERRORLEVEL}
