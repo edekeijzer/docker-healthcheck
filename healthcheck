@@ -1,7 +1,4 @@
-#!/bin/ash
-
-# Load S6 environment if it's available
-[ -d  /var/run/s6/container_environment ] && /usr/bin/justc-envdir -- /var/run/s6/container_environment
+#!/usr/bin/with-contenv ash
 
 while getopts "c:d:vh" OPT ; do
   case $OPT in
